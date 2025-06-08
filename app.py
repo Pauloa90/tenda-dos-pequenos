@@ -40,11 +40,6 @@ try:
     if "OPENAI_API_KEY" in st.secrets:
         api_key = st.secrets["OPENAI_API_KEY"]
         st.success(f"✅ API Key encontrada: {api_key[:10]}...")
-        
-        # Usar método antigo para compatibilidade
-        import openai
-        openai.api_key = api_key
-        client = None  # Usar método antigo
         st.success("✅ OpenAI configurado com sucesso!")
         
     else:
@@ -55,58 +50,116 @@ except Exception as e:
     st.error(f"Erro ao configurar OpenAI: {e}")
     st.stop()
 
-# Função para chamar o Assistant
+# Função para chamar o Assistant via requests direto
 def generate_episodes(num_episodes):
     try:
-        import openai
+        import requests
+        
+        api_key = st.secrets["OPENAI_API_KEY"]
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "OpenAI-Beta": "assistants=v2"
+        }
         
         # Criar thread
-        thread = openai.beta.threads.create()
+        thread_response = requests.post(
+            "https://api.openai.com/v1/threads",
+            headers=headers,
+            json={}
+        )
+        
+        if thread_response.status_code != 200:
+            st.error(f"Erro ao criar thread: {thread_response.text}")
+            return []
+            
+        thread_id = thread_response.json()["id"]
         
         # Enviar mensagem
-        message = openai.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=f"Gere {num_episodes} ideias de episódios bíblicos infantis"
+        message_response = requests.post(
+            f"https://api.openai.com/v1/threads/{thread_id}/messages",
+            headers=headers,
+            json={
+                "role": "user",
+                "content": f"Gere {num_episodes} ideias de episódios bíblicos infantis"
+            }
         )
+        
+        if message_response.status_code != 200:
+            st.error(f"Erro ao enviar mensagem: {message_response.text}")
+            return []
         
         # Executar Assistant
-        run = openai.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=ASSISTANT_ID
+        run_response = requests.post(
+            f"https://api.openai.com/v1/threads/{thread_id}/runs",
+            headers=headers,
+            json={
+                "assistant_id": ASSISTANT_ID
+            }
         )
         
-        # Aguardar resposta
-        while run.status in ['queued', 'in_progress']:
-            time.sleep(1)
-            run = openai.beta.threads.runs.retrieve(
-                thread_id=thread.id,
-                run_id=run.id
-            )
+        if run_response.status_code != 200:
+            st.error(f"Erro ao executar assistant: {run_response.text}")
+            return []
+            
+        run_id = run_response.json()["id"]
         
-        if run.status == 'completed':
-            # Buscar mensagens
-            messages = openai.beta.threads.messages.list(
-                thread_id=thread.id
+        # Aguardar conclusão
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            status_response = requests.get(
+                f"https://api.openai.com/v1/threads/{thread_id}/runs/{run_id}",
+                headers=headers
             )
             
-            response = messages.data[0].content[0].text.value
-            
-            # Tentar parsear JSON
-            try:
-                episodes = json.loads(response)
-                if isinstance(episodes, dict):
-                    episodes = [episodes]
-                return episodes
-            except:
-                st.error("Erro ao processar resposta do Assistant")
+            if status_response.status_code != 200:
+                st.error(f"Erro ao verificar status: {status_response.text}")
                 return []
+                
+            status = status_response.json()["status"]
+            
+            if status == "completed":
+                break
+            elif status in ["failed", "cancelled", "expired"]:
+                st.error(f"Assistant falhou: {status}")
+                return []
+            
+            time.sleep(2)
         else:
-            st.error(f"Erro no Assistant: {run.status}")
+            st.error("Timeout - Assistant demorou muito para responder")
+            return []
+        
+        # Buscar resposta
+        messages_response = requests.get(
+            f"https://api.openai.com/v1/threads/{thread_id}/messages",
+            headers=headers
+        )
+        
+        if messages_response.status_code != 200:
+            st.error(f"Erro ao buscar mensagens: {messages_response.text}")
+            return []
+            
+        messages = messages_response.json()["data"]
+        
+        if not messages:
+            st.error("Nenhuma resposta encontrada")
+            return []
+            
+        response_text = messages[0]["content"][0]["text"]["value"]
+        
+        # Tentar parsear JSON
+        try:
+            episodes = json.loads(response_text)
+            if isinstance(episodes, dict):
+                episodes = [episodes]
+            return episodes
+        except json.JSONDecodeError:
+            st.error("Resposta não está em formato JSON válido")
+            st.text(f"Resposta recebida: {response_text}")
             return []
             
     except Exception as e:
-        st.error(f"Erro ao conectar com OpenAI: {e}")
+        st.error(f"Erro geral: {e}")
         return []
 
 # Funcões Google Sheets
