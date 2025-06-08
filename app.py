@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -16,7 +15,8 @@ st.set_page_config(
 
 # Configurar OpenAI (usando secrets do Streamlit)
 try:
-    openai.api_key = st.secrets["OPENAI_API_KEY"]
+    from openai import OpenAI
+    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
     ASSISTANT_ID = "asst_QeV7hQfMyuvrXS4zk41pbkTF"  # Seu Assistant ID
 except:
     st.error("Configure as chaves de API nas secrets do Streamlit")
@@ -26,17 +26,17 @@ except:
 def generate_episodes(num_episodes):
     try:
         # Criar thread
-        thread = openai.beta.threads.create()
+        thread = client.beta.threads.create()
         
         # Enviar mensagem
-        message = openai.beta.threads.messages.create(
+        message = client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
             content=f"Gere {num_episodes} ideias de episódios bíblicos infantis"
         )
         
         # Executar Assistant
-        run = openai.beta.threads.runs.create(
+        run = client.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=ASSISTANT_ID
         )
@@ -44,14 +44,14 @@ def generate_episodes(num_episodes):
         # Aguardar resposta
         while run.status in ['queued', 'in_progress']:
             time.sleep(1)
-            run = openai.beta.threads.runs.retrieve(
+            run = client.beta.threads.runs.retrieve(
                 thread_id=thread.id,
                 run_id=run.id
             )
         
         if run.status == 'completed':
             # Buscar mensagens
-            messages = openai.beta.threads.messages.list(
+            messages = client.beta.threads.messages.list(
                 thread_id=thread.id
             )
             
