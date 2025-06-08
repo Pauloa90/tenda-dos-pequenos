@@ -432,3 +432,13 @@ if st.sidebar.checkbox("🔧 Debug Info"):
             st.sidebar.success("✅ Google Sheets OK")
         else:
             st.sidebar.error("❌ Google Sheets Error")
+# Teste PIAPI (remover depois)
+if st.sidebar.button("🧪 Teste PIAPI"):
+    from services.piapi_service import PiapiService
+    piapi = PiapiService()
+    success, result = piapi.test_connection()
+    if success:
+        st.success("✅ PIAPI funcionando!")
+        st.json(result)
+    else:
+        st.error(f"❌ Erro: {result}")
