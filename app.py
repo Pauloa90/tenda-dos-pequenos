@@ -631,3 +631,32 @@ if st.sidebar.checkbox("🔧 Debug Info"):
             st.sidebar.success("✅ Google Sheets OK")
         else:
             st.sidebar.error("❌ Google Sheets Error")
+# TESTE MANUAL - Adicione temporariamente
+if st.sidebar.button("🧪 Teste Manual Personagens"):
+    st.write("Testando geração manual de personagens...")
+    
+    # Dados de teste
+    test_episode = {
+        'Episódio': 'O Bom Samaritano',
+        'Descrição Curta': 'Um viajante é ajudado por um gentil samaritano',
+        'Moral': 'Amar e ajudar a todos'
+    }
+    
+    with st.spinner("Testando Diretor de Personagens..."):
+        characters = generate_characters_for_episode(
+            test_episode['Episódio'],
+            test_episode['Descrição Curta'],
+            test_episode['Moral']
+        )
+        
+        if characters:
+            st.success(f"✅ {len(characters)} personagens criados!")
+            st.json(characters)
+            
+            # Testar salvar na planilha
+            if add_characters_to_sheet(characters, test_episode['Episódio']):
+                st.success("✅ Personagens salvos na planilha!")
+            else:
+                st.error("❌ Erro ao salvar na planilha")
+        else:
+            st.error("❌ Erro ao gerar personagens")
