@@ -51,49 +51,84 @@ except Exception as e:
 # Função para chamar o Assistant
 def generate_episodes(num_episodes):
     try:
-        # Criar thread
-        thread = client.beta.threads.create()
-        
-        # Enviar mensagem
-        message = client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=f"Gere {num_episodes} ideias de episódios bíblicos infantis"
-        )
-        
-        # Executar Assistant
-        run = client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=ASSISTANT_ID
-        )
-        
-        # Aguardar resposta
-        while run.status in ['queued', 'in_progress']:
-            time.sleep(1)
-            run = client.beta.threads.runs.retrieve(
+        if client is None:
+            # Usar método antigo
+            import openai
+            
+            # Criar thread
+            thread = openai.beta.threads.create()
+            
+            # Enviar mensagem
+            message = openai.beta.threads.messages.create(
                 thread_id=thread.id,
-                run_id=run.id
-            )
-        
-        if run.status == 'completed':
-            # Buscar mensagens
-            messages = client.beta.threads.messages.list(
-                thread_id=thread.id
+                role="user",
+                content=f"Gere {num_episodes} ideias de episódios bíblicos infantis"
             )
             
-            response = messages.data[0].content[0].text.value
+            # Executar Assistant
+            run = openai.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=ASSISTANT_ID
+            )
             
-            # Tentar parsear JSON
-            try:
-                episodes = json.loads(response)
-                if isinstance(episodes, dict):
-                    episodes = [episodes]  # Se retornou só 1 episódio
-                return episodes
-            except:
-                st.error("Erro ao processar resposta do Assistant")
+            # Aguardar resposta
+            while run.status in ['queued', 'in_progress']:
+                time.sleep(1)
+                run = openai.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
+            
+            if run.status == 'completed':
+                # Buscar mensagens
+                messages = openai.beta.threads.messages.list(
+                    thread_id=thread.id
+                )
+                
+                response = messages.data[0].content[0].text.value
+                
+                # Tentar parsear JSON
+                try:
+                    episodes = json.loads(response)
+                    if isinstance(episodes, dict):
+                        episodes = [episodes]
+                    return episodes
+                except:
+                    st.error("Erro ao processar resposta do Assistant")
+                    return []
+            else:
+                st.error(f"Erro no Assistant: {run.status}")
                 return []
         else:
-            st.error(f"Erro no Assistant: {run.status}")
+            # Usar método novo (se client funcionar)
+            thread = client.beta.threads.create()
+            message = client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=f"Gere {num_episodes} ideias de episódios bíblicos infantis"
+            )
+            run = client.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=ASSISTANT_ID
+            )
+            
+            while run.status in ['queued', 'in_progress']:
+                time.sleep(1)
+                run = client.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
+            
+            if run.status == 'completed':
+                messages = client.beta.threads.messages.list(thread_id=thread.id)
+                response = messages.data[0].content[0].text.value
+                try:
+                    episodes = json.loads(response)
+                    if isinstance(episodes, dict):
+                        episodes = [episodes]
+                    return episodes
+                except:
+                    return []
             return []
             
     except Exception as e:
