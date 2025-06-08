@@ -17,6 +17,7 @@ st.set_page_config(
 # ID da planilha
 SPREADSHEET_ID = "1USj7J6jVR387eVjxVDzy69404qaRcgjEfxclBv0U5M4"
 ASSISTANT_ID = "asst_QeV7hQfMyuvrXS4zk41pbkTF"
+PERSONAGENS_ASSISTANT_ID = "asst_C3jWk8RdgvwoVFFR8CK5jq6a"  # Diretor de Personagens
 
 # Configurar Google Sheets
 @st.cache_resource
@@ -172,6 +173,182 @@ def generate_episodes(num_episodes):
         st.error(f"Erro geral: {e}")
         return []
 
+def generate_characters_for_episode(episode_title, episode_description, episode_moral):
+    """Chama o Agent Diretor de Personagens para criar personagens"""
+    try:
+        import requests
+        
+        api_key = st.secrets["OPENAI_API_KEY"]
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "OpenAI-Beta": "assistants=v2"
+        }
+        
+        # Criar thread
+        thread_response = requests.post(
+            "https://api.openai.com/v1/threads",
+            headers=headers,
+            json={}
+        )
+        
+        if thread_response.status_code != 200:
+            st.error(f"Erro ao criar thread para personagens: {thread_response.text}")
+            return []
+            
+        thread_id = thread_response.json()["id"]
+        
+        # Prompt para o Diretor de Personagens
+        prompt = f"""
+        EPISÓDIO: {episode_title}
+        DESCRIÇÃO: {episode_description}
+        MORAL: {episode_moral}
+        
+        Analise este episódio e crie os personagens necessários (máximo 4).
+        Para cada personagem, forneça:
+        - Nome
+        - Papel na história
+        - Descrição física detalhada
+        - Prompt para imagem (estilo 3D Pixar, fundo branco, corpo inteiro)
+        
+        Responda em JSON formato:
+        [
+          {
+            "nome": "Nome do Personagem",
+            "papel": "Protagonista/Coadjuvante/etc",
+            "descricao": "Descrição física detalhada",
+            "prompt_imagem": "Prompt específico para Midjourney",
+            "status": "Pendente"
+          }
+        ]
+        """
+        
+        # Enviar mensagem
+        message_response = requests.post(
+            f"https://api.openai.com/v1/threads/{thread_id}/messages",
+            headers=headers,
+            json={
+                "role": "user",
+                "content": prompt
+            }
+        )
+        
+        if message_response.status_code != 200:
+            st.error(f"Erro ao enviar mensagem para personagens: {message_response.text}")
+            return []
+        
+        # Executar Assistant
+        run_response = requests.post(
+            f"https://api.openai.com/v1/threads/{thread_id}/runs",
+            headers=headers,
+            json={
+                "assistant_id": PERSONAGENS_ASSISTANT_ID
+            }
+        )
+        
+        if run_response.status_code != 200:
+            st.error(f"Erro ao executar assistant de personagens: {run_response.text}")
+            return []
+            
+        run_id = run_response.json()["id"]
+        
+        # Aguardar conclusão
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            status_response = requests.get(
+                f"https://api.openai.com/v1/threads/{thread_id}/runs/{run_id}",
+                headers=headers
+            )
+            
+            if status_response.status_code != 200:
+                st.error(f"Erro ao verificar status de personagens: {status_response.text}")
+                return []
+                
+            status = status_response.json()["status"]
+            
+            if status == "completed":
+                break
+            elif status in ["failed", "cancelled", "expired"]:
+                st.error(f"Assistant de personagens falhou: {status}")
+                return []
+            
+            time.sleep(2)
+        else:
+            st.error("Timeout - Diretor de Personagens demorou muito")
+            return []
+        
+        # Buscar resposta
+        messages_response = requests.get(
+            f"https://api.openai.com/v1/threads/{thread_id}/messages",
+            headers=headers
+        )
+        
+        if messages_response.status_code != 200:
+            st.error(f"Erro ao buscar mensagens de personagens: {messages_response.text}")
+            return []
+            
+        messages = messages_response.json()["data"]
+        
+        if not messages:
+            st.error("Nenhuma resposta do Diretor de Personagens")
+            return []
+            
+        response_text = messages[0]["content"][0]["text"]["value"]
+        
+        # Limpar markdown e parsear JSON
+        try:
+            response_clean = response_text.strip()
+            if response_clean.startswith("```json"):
+                response_clean = response_clean[7:]
+            if response_clean.startswith("```"):
+                response_clean = response_clean[3:]
+            if response_clean.endswith("```"):
+                response_clean = response_clean[:-3]
+            response_clean = response_clean.strip()
+            
+            characters = json.loads(response_clean)
+            return characters
+        except json.JSONDecodeError as e:
+            st.error(f"Erro ao processar JSON de personagens: {e}")
+            st.text(f"Resposta recebida: {response_text}")
+            return []
+            
+    except Exception as e:
+        st.error(f"Erro geral no Diretor de Personagens: {e}")
+        return []
+
+def add_characters_to_sheet(characters, episode_title):
+    """Adiciona personagens à aba Personagens do Google Sheets"""
+    try:
+        sheet = init_gsheet()
+        if sheet is None:
+            return False
+            
+        # Tentar acessar aba Personagens
+        try:
+            personagens_sheet = sheet.worksheet("Personagens")
+        except:
+            # Criar aba se não existir
+            personagens_sheet = sheet.add_worksheet(title="Personagens", rows="100", cols="6")
+            # Adicionar cabeçalho
+            personagens_sheet.append_row(["Nome", "Papel", "Descrição", "Prompt Imagem", "Status", "Link"])
+        
+        # Adicionar cada personagem
+        for char in characters:
+            personagens_sheet.append_row([
+                char.get('nome', ''),
+                char.get('papel', ''),
+                char.get('descricao', ''),
+                char.get('prompt_imagem', ''),
+                char.get('status', 'Pendente'),
+                ''  # Link vazio inicialmente
+            ])
+        
+        return True
+    except Exception as e:
+        st.error(f"Erro ao adicionar personagens à planilha: {e}")
+        return False
+
 # Funcões Google Sheets
 def get_episodes_from_sheet():
     try:
@@ -209,15 +386,37 @@ def add_episodes_to_sheet(episodes):
         st.error(f"Erro ao adicionar episódios: {e}")
         return False
 
-def update_episode_status(row_index, new_status):
+def update_episode_status(row_index, new_status, episode_data=None):
     try:
         sheet = init_gsheet()
         if sheet is None:
             return False
             
         episodios_sheet = sheet.worksheet("Episodios")
-        # row_index + 2 porque: +1 para index real, +1 para pular header
         episodios_sheet.update_cell(row_index + 2, 4, new_status)
+        
+        # Se episódio foi aprovado, gerar personagens
+        if new_status == "Approved" and episode_data:
+            st.info("🎭 Episódio aprovado! Gerando personagens...")
+            
+            with st.spinner("Criando personagens com Diretor de Personagens..."):
+                characters = generate_characters_for_episode(
+                    episode_data.get('Episódio', ''),
+                    episode_data.get('Descrição Curta', ''),
+                    episode_data.get('Moral', '')
+                )
+                
+                if characters:
+                    if add_characters_to_sheet(characters, episode_data.get('Episódio', '')):
+                        st.success(f"✅ {len(characters)} personagens criados!")
+                        # Mostrar personagens criados
+                        for char in characters:
+                            st.write(f"👤 **{char.get('nome')}** - {char.get('papel')}")
+                    else:
+                        st.error("Erro ao salvar personagens na planilha")
+                else:
+                    st.error("Erro ao gerar personagens")
+        
         return True
     except Exception as e:
         st.error(f"Erro ao atualizar status: {e}")
@@ -303,7 +502,7 @@ if tab_selected == "Episódios":
                     
                     if new_status != current_status:
                         if st.button(f"💾 Salvar Status", key=f"save_{i}"):
-                            if update_episode_status(i, new_status):
+                            if update_episode_status(i, new_status, ep):  # Passa os dados do episódio
                                 st.success("Status atualizado!")
                                 time.sleep(1)
                                 st.rerun()
@@ -432,4 +631,3 @@ if st.sidebar.checkbox("🔧 Debug Info"):
             st.sidebar.success("✅ Google Sheets OK")
         else:
             st.sidebar.error("❌ Google Sheets Error")
-
