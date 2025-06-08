@@ -21,8 +21,14 @@ try:
     if "OPENAI_API_KEY" in st.secrets:
         api_key = st.secrets["OPENAI_API_KEY"]
         st.success(f"✅ API Key encontrada: {api_key[:10]}...")
-        client = OpenAI(api_key=api_key)
+        
+        # Usar versão mais simples do client
+        client = OpenAI(
+            api_key=api_key
+        )
         ASSISTANT_ID = "asst_QeV7hQfMyuvrXS4zk41pbkTF"
+        st.success("✅ Cliente OpenAI configurado com sucesso!")
+        
     else:
         st.error("❌ OPENAI_API_KEY não encontrada nas secrets")
         st.write("Secrets disponíveis:", list(st.secrets.keys()))
@@ -30,8 +36,17 @@ try:
         
 except Exception as e:
     st.error(f"Erro ao configurar OpenAI: {e}")
-    st.write("Verifique se configurou OPENAI_API_KEY nas secrets do Streamlit")
-    st.stop()
+    
+    # Fallback: tentar importação alternativa
+    try:
+        import openai
+        openai.api_key = st.secrets["OPENAI_API_KEY"]
+        st.warning("⚠️ Usando método alternativo do OpenAI")
+        client = None  # Vamos usar o método antigo
+        ASSISTANT_ID = "asst_QeV7hQfMyuvrXS4zk41pbkTF"
+    except:
+        st.error("Não foi possível configurar OpenAI de forma alguma")
+        st.stop()
 
 # Função para chamar o Assistant
 def generate_episodes(num_episodes):
