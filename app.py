@@ -16,10 +16,21 @@ st.set_page_config(
 # Configurar OpenAI (usando secrets do Streamlit)
 try:
     from openai import OpenAI
-    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-    ASSISTANT_ID = "asst_QeV7hQfMyuvrXS4zk41pbkTF"  # Seu Assistant ID
-except:
-    st.error("Configure as chaves de API nas secrets do Streamlit")
+    
+    # Debug: verificar se a secret existe
+    if "OPENAI_API_KEY" in st.secrets:
+        api_key = st.secrets["OPENAI_API_KEY"]
+        st.success(f"✅ API Key encontrada: {api_key[:10]}...")
+        client = OpenAI(api_key=api_key)
+        ASSISTANT_ID = "asst_QeV7hQfMyuvrXS4zk41pbkTF"
+    else:
+        st.error("❌ OPENAI_API_KEY não encontrada nas secrets")
+        st.write("Secrets disponíveis:", list(st.secrets.keys()))
+        st.stop()
+        
+except Exception as e:
+    st.error(f"Erro ao configurar OpenAI: {e}")
+    st.write("Verifique se configurou OPENAI_API_KEY nas secrets do Streamlit")
     st.stop()
 
 # Função para chamar o Assistant
