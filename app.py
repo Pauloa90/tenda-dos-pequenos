@@ -198,11 +198,11 @@ def generate_characters_for_episode(episode_title, episode_description, episode_
             
         thread_id = thread_response.json()["id"]
         
-        # Prompt para o Diretor de Personagens
-        prompt = f"""
-        EPISÓDIO: {episode_title}
-        DESCRIÇÃO: {episode_description}
-        MORAL: {episode_moral}
+        # Prompt para o Diretor de Personagens (SEM f-string problemática)
+        prompt = """
+        EPISÓDIO: """ + episode_title + """
+        DESCRIÇÃO: """ + episode_description + """
+        MORAL: """ + episode_moral + """
         
         Analise este episódio e crie os personagens necessários (máximo 4).
         Para cada personagem, forneça:
