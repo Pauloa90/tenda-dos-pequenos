@@ -316,7 +316,131 @@ def generate_characters_for_episode(episode_title, episode_description, episode_
     except Exception as e:
         st.error(f"Erro geral no Diretor de Personagens: {e}")
         return []
+def generate_character_images_piapi(prompt_midjourney, character_name):
+    """Gera 4 opções de imagem via PIAPI/Midjourney"""
+    try:
+        import requests
+        
+        if "PIAPI_API_KEY" not in st.secrets:
+            st.error("❌ PIAPI_API_KEY não encontrada nas secrets")
+            return None
+            
+        api_key = st.secrets["PIAPI_API_KEY"]
+        
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        }
+        
+        # Chamar API imagine
+        response = requests.post(
+            "https://api.piapi.ai/mj/v2/imagine",
+            headers=headers,
+            json={
+                "prompt": prompt_midjourney,
+                "aspect_ratio": "1:1",
+                "model": "mj-6"
+            }
+        )
+        
+        if response.status_code == 200:
+            task_id = response.json().get("task_id")
+            return wait_for_piapi_completion(task_id, character_name)
+        else:
+            st.error(f"Erro na API PIAPI: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Erro ao gerar imagens: {e}")
+        return None
 
+def wait_for_piapi_completion(task_id, character_name, max_wait=300):
+    """Aguarda a conclusão da tarefa PIAPI"""
+    
+    import requests
+    import time
+    
+    api_key = st.secrets["PIAPI_API_KEY"]
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": api_key
+    }
+    
+    start_time = time.time()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    while time.time() - start_time < max_wait:
+        try:
+            response = requests.get(
+                f"https://api.piapi.ai/mj/v2/fetch",
+                headers=headers,
+                params={"task_id": task_id}
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                status = result.get("status")
+                
+                # Atualizar progresso
+                elapsed = time.time() - start_time
+                progress = min(elapsed / max_wait, 0.9)
+                progress_bar.progress(progress)
+                status_text.text(f"🎨 Gerando {character_name}: {status}...")
+                
+                if status == "finished":
+                    progress_bar.progress(1.0)
+                    status_text.text(f"✅ {character_name} concluído!")
+                    return result
+                elif status == "failed":
+                    st.error(f"Geração falhou: {result.get('error', 'Erro desconhecido')}")
+                    return None
+                elif status in ["processing", "waiting"]:
+                    time.sleep(10)
+                else:
+                    st.warning(f"Status desconhecido: {status}")
+                    time.sleep(5)
+            else:
+                st.error(f"Erro ao verificar status: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            st.error(f"Erro ao verificar status: {e}")
+            return None
+    
+    st.error("Timeout: Geração de imagem demorou muito")
+    return None
+
+def upscale_character_image(task_id, index):
+    """Faz upscale da imagem escolhida"""
+    try:
+        import requests
+        
+        api_key = st.secrets["PIAPI_API_KEY"]
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        }
+        
+        response = requests.post(
+            "https://api.piapi.ai/mj/v2/upscale",
+            headers=headers,
+            json={
+                "origin_task_id": task_id,
+                "index": index
+            }
+        )
+        
+        if response.status_code == 200:
+            upscale_task_id = response.json().get("task_id")
+            return wait_for_piapi_completion(upscale_task_id, "Upscale")
+        else:
+            st.error(f"Erro no upscale: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Erro ao fazer upscale: {e}")
+        return None
 def add_characters_to_sheet(characters, episode_title):
     """Adiciona personagens à aba Personagens do Google Sheets"""
     try:
