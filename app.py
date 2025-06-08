@@ -149,13 +149,23 @@ def generate_episodes(num_episodes):
         
         # Tentar parsear JSON
         try:
-            episodes = json.loads(response_text)
+            # Limpar markdown se existir
+            response_clean = response_text.strip()
+            if response_clean.startswith("```json"):
+                response_clean = response_clean[7:]  # Remove ```json
+            if response_clean.startswith("```"):
+                response_clean = response_clean[3:]   # Remove ```
+            if response_clean.endswith("```"):
+                response_clean = response_clean[:-3]  # Remove ```
+            response_clean = response_clean.strip()
+            
+            episodes = json.loads(response_clean)
             if isinstance(episodes, dict):
                 episodes = [episodes]
             return episodes
-        except json.JSONDecodeError:
-            st.error("Resposta não está em formato JSON válido")
-            st.text(f"Resposta recebida: {response_text}")
+        except json.JSONDecodeError as e:
+            st.error(f"Erro ao processar JSON: {e}")
+            st.text(f"Resposta limpa: {response_clean}")
             return []
             
     except Exception as e:
